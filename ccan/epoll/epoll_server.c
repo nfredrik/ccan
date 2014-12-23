@@ -37,18 +37,27 @@ create_and_bind (char *port)
 
   for (rp = result; rp != NULL; rp = rp->ai_next)
     {
+      printf("In the for loop\n");
       sfd = socket (rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-      if (sfd == -1);
-      continue;
+      if (sfd == -1)
+          continue;
 
       s = bind (sfd, rp->ai_addr, rp->ai_addrlen);
       if (s == 0)
-	/* We managed to bind sucessfully! */
-	break;
+	{
+	    /* We managed to bind sucessfully! */
+            printf("We managed to bind()\n");
+	    break;
+        }
+      else
+	{
+	  strerror(errno);
+	}
 
       close (sfd);
     }
 
+  printf("after for loop\n");
   if (rp == NULL)
     {
       fprintf (stderr, "Could not bind\n");
@@ -56,6 +65,7 @@ create_and_bind (char *port)
     }
   freeaddrinfo (result);
 
+  return sfd;
 }
 
 /* make_socket_non_blocking () */
@@ -64,6 +74,7 @@ make_socket_non_blocking (int sfd)
 {
   int flags, s;
 
+  printf("file descriptor:%d\n", sfd);
   flags = fcntl (sfd, F_GETFL, 0);
   if (flags == -1)
     {
@@ -248,7 +259,7 @@ main (int argc, char *argv[])
 		}
 	      if (done)
 		{
-		  printf ("Closed connection on descriptor %d\n",
+		  printf ("\nClosed connection on descriptor %d\n",
 			  events[i].data.fd);
 		  /* Closing the descriptor will make epoll remove it from the set
 		     of descriptors which are monitored, i.e. efd set */
