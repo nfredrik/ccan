@@ -11,7 +11,11 @@
 
 #define MAXEVENTS 64
 #define MAXBUFF   512
-/* Copied from https://banu.com/blog/2/how-to-use-epoll-a-complete-example-in-c/ */
+/* Copied from https://banu.com/blog/2/how-to-use-epoll-a-complete-example-in-c/ 
+
+TODO: continue after listening notification not needed.
+*/
+
 
 
 /* create_and_bind ()  */
@@ -87,6 +91,56 @@ static int make_socket_non_blocking (int sfd)
       return -1;
     }
   return 0;
+}
+
+static int add_connection(int sfd, int efd, struct epoll_event event)
+{
+	      while (1)
+		{
+		  struct sockaddr in_addr;
+		  socklen_t in_len;
+		  int infd;
+		  char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
+                  int s;
+
+		  in_len = sizeof in_addr;
+		  infd = accept (sfd, &in_addr, &in_len);
+		  if (infd == -1)
+		    {
+		      if ((errno == EAGAIN || (errno == EWOULDBLOCK)))
+			/* We have processed all incoming connections */
+			break;
+		      else
+			{
+			  perror ("accept");
+			  break;
+			}
+		    }
+
+		  s = getnameinfo (&in_addr, in_len,
+				   hbuf, sizeof hbuf,
+				   sbuf, sizeof sbuf,
+				   NI_NUMERICHOST | NI_NUMERICSERV);
+
+		  if (s == 0)
+		    printf ("Accepted connection on descriptor %d"
+			    "(host=%s, port=%s)\n", infd, hbuf, sbuf);
+
+		  /* Make the incoming socket non-blocking and add it to the
+		     list of fds to monitor */
+		  s = make_socket_non_blocking (infd);
+		  if (s == -1)
+		    abort ();
+
+		  event.data.fd = infd;
+		  event.events = EPOLLIN | EPOLLET;   /* edge-triggered */        
+		  s = epoll_ctl (efd, EPOLL_CTL_ADD, infd, &event);
+		  if (s == -1)
+		    {
+		      perror ("epoll_ctl");
+		      abort ();
+		    }
+		}
 }
 
 
@@ -166,51 +220,7 @@ main (int argc, char *argv[])
 	    {
 	      /* We have notification on the listening socket, which
 	         means one or more incoming connections */
-	      while (1)
-		{
-		  struct sockaddr in_addr;
-		  socklen_t in_len;
-		  int infd;
-		  char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
-
-		  in_len = sizeof in_addr;
-		  infd = accept (sfd, &in_addr, &in_len);
-		  if (infd == -1)
-		    {
-		      if ((errno == EAGAIN || (errno == EWOULDBLOCK)))
-			/* We have processed all incoming connections */
-			break;
-		      else
-			{
-			  perror ("accept");
-			  break;
-			}
-		    }
-
-		  s = getnameinfo (&in_addr, in_len,
-				   hbuf, sizeof hbuf,
-				   sbuf, sizeof sbuf,
-				   NI_NUMERICHOST | NI_NUMERICSERV);
-
-		  if (s == 0)
-		    printf ("Accepted connection on descriptor %d"
-			    "(host=%s, port=%s)\n", infd, hbuf, sbuf);
-
-		  /* Make the incoming socket non-blocking and add it to the
-		     list of fds to monitor */
-		  s = make_socket_non_blocking (infd);
-		  if (s == -1)
-		    abort ();
-
-		  event.data.fd = infd;
-		  event.events = EPOLLIN | EPOLLET;   /* edge-triggered */        
-		  s = epoll_ctl (efd, EPOLL_CTL_ADD, infd, &event);
-		  if (s == -1)
-		    {
-		      perror ("epoll_ctl");
-		      abort ();
-		    }
-		}
+              add_connection(sfd, efd, event);
 	      continue;   /* This continue should not be needed! */
 	    }
 	  else
@@ -244,14 +254,14 @@ main (int argc, char *argv[])
 		      done = 1;
 		      break;
 		    }
-#ifdef NISSE
+
 		  s = write (1, buf, count);   /* 1 == write to stdout */
 		  if (s == -1)
 		    {
 		      perror ("write");
 		      abort ();
 		    }
-#endif
+
 		}
 	      if (done)
 		{
