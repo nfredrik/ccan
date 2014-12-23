@@ -10,23 +10,21 @@
 #include <errno.h>
 
 #define MAXEVENTS 64
-
+#define MAXBUFF   512
 /* Copied from https://banu.com/blog/2/how-to-use-epoll-a-complete-example-in-c/ */
 
 
 /* create_and_bind ()  */
-
-static int
-create_and_bind (char *port)
+static int create_and_bind (char *port)
 {
   struct addrinfo hints;
   struct addrinfo *result, *rp;
   int s, sfd;
 
   memset (&hints, 0, sizeof (struct addrinfo));
-  hints.ai_family = AF_UNSPEC;	/* Return IPv4 and IPV6 choices */
+  hints.ai_family = AF_UNSPEC;	        /* Return IPv4 and IPV6 choices */
   hints.ai_socktype = SOCK_STREAM;	/* We want a TCP socket */
-  hints.ai_flags = AI_PASSIVE;	/* All interfaces */
+  hints.ai_flags = AI_PASSIVE;	        /* All interfaces */
 
   s = getaddrinfo (NULL, port, &hints, &result);
   if (s != 0)
@@ -37,15 +35,16 @@ create_and_bind (char *port)
 
   for (rp = result; rp != NULL; rp = rp->ai_next)
     {
-      printf("In the for loop\n");
       sfd = socket (rp->ai_family, rp->ai_socktype, rp->ai_protocol);
       if (sfd == -1)
+	{
+	  strerror(errno);
           continue;
+	}
 
       s = bind (sfd, rp->ai_addr, rp->ai_addrlen);
       if (s == 0)
 	{
-	    /* We managed to bind sucessfully! */
             printf("We managed to bind()\n");
 	    break;
         }
@@ -57,30 +56,27 @@ create_and_bind (char *port)
       close (sfd);
     }
 
-  printf("after for loop\n");
+  freeaddrinfo (result);
+
   if (rp == NULL)
     {
       fprintf (stderr, "Could not bind\n");
       return -1;
     }
-  freeaddrinfo (result);
 
   return sfd;
 }
 
 /* make_socket_non_blocking () */
-static int
-make_socket_non_blocking (int sfd)
+static int make_socket_non_blocking (int sfd)
 {
   int flags, s;
 
-  printf("file descriptor:%d\n", sfd);
   flags = fcntl (sfd, F_GETFL, 0);
   if (flags == -1)
     {
       perror ("fcntl, getfl");
       return -1;
-
     }
 
   flags |= O_NONBLOCK;
@@ -90,7 +86,6 @@ make_socket_non_blocking (int sfd)
       perror ("fcntl, setfl");
       return -1;
     }
-
   return 0;
 }
 
@@ -134,6 +129,7 @@ main (int argc, char *argv[])
     }
 
 
+  /* Add listening socket to event set */
   event.data.fd = sfd;
   event.events = EPOLLIN | EPOLLET;         /* edge-triggered! */
   s = epoll_ctl (efd, EPOLL_CTL_ADD, sfd, &event);
@@ -147,15 +143,14 @@ main (int argc, char *argv[])
   events = calloc (MAXEVENTS, sizeof (event));
 
   /* The event loop */
-
   while (1)
     {
       int n, i;
 
-      n = epoll_wait (efd, events, MAXEVENTS, -1);  /* Block if no events */
+      /* Block if no events */
+      n = epoll_wait (efd, events, MAXEVENTS, -1);  
       for (i = 0; i < n; i++)
 	{
-
 	  /* An error has occured on this fd, or the socket is not
 	     ready for reading, why were we notfied then? */
 	  if ((events[i].events & EPOLLERR) ||
@@ -164,12 +159,12 @@ main (int argc, char *argv[])
 
 	    {
 	      fprintf (stderr, "epoll_error\n");
-	      close (events[i].data.fd);           /* Removed from efd set */
+	      close (events[i].data.fd);           /* Remove from efd set */
 	      continue;
 	    }
 	  else if (sfd == events[i].data.fd)
 	    {
-	      /* We have notification on the listing socket, which
+	      /* We have notification on the listening socket, which
 	         means one or more incoming connections */
 	      while (1)
 		{
@@ -216,7 +211,7 @@ main (int argc, char *argv[])
 		      abort ();
 		    }
 		}
-	      continue;
+	      continue;   /* This continue should not be needed! */
 	    }
 	  else
 	    {
@@ -229,7 +224,7 @@ main (int argc, char *argv[])
 	      while (1)
 		{
 		  ssize_t count;
-		  char buf[512];
+		  char buf[MAXBUFF];
 
 		  count = read (events[i].data.fd, buf, sizeof buf);
 		  if (count == -1)
@@ -249,13 +244,14 @@ main (int argc, char *argv[])
 		      done = 1;
 		      break;
 		    }
+#ifdef NISSE
 		  s = write (1, buf, count);   /* 1 == write to stdout */
 		  if (s == -1)
 		    {
 		      perror ("write");
 		      abort ();
 		    }
-
+#endif
 		}
 	      if (done)
 		{

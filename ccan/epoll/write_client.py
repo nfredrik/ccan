@@ -15,9 +15,13 @@ sock.connect(server_address)
 try:
 
     # Send data
-    message = 'This is the message. It will be repeated'
+    message = 'This is the message. It will be repeated\n'
     print >>sys.stderr, 'sending "%s"' % message
-    sock.sendall(message)
+
+    for _ in range(100000):
+        sock.sendall(message)
+
+    sys.exit(1)
 
     # Look for the response
     amount_received = 0
